@@ -3,6 +3,10 @@
 #include <WiFiUdp.h>
 #include <tgmath.h>
 
+#define MAX_VAL 32769.0
+
+void update_servos();
+
 char packetBuffer[255]; //buffer to hold incoming packet
 const char* ssid     = "da_baby";
 const char* password = "47543454";
@@ -14,7 +18,7 @@ IPAddress ipLocal(192, 168, 1, 6);  // replace with your IP address
 
 
 //intiialize varaibles
-double r, duty_cycle, theta, xVal, yVal, DCL, DCR, theta_deg;
+double xVal, yVal;
 int leftD, rightD; //0 is forward, 1 is backward
 
 const int enablePin1 = 10;
@@ -30,88 +34,49 @@ const int resolution = 13;
 const int freq = 50;
 long heartbeat = 0;
 
-void update_servos() {
-  
-  //find radius of point
-  r = sqrt(xVal * xVal + yVal * yVal);
-  
-  duty_cycle = map(r, 0, 100, 0, 8191); //map radius to duty cycle for primary motor (can adjust resolution)
+float scaler(float x, float in_min, float in_max, float out_min, float out_max)
+{
+  return (float)(x - in_min) * (out_max - out_min) / (float)(in_max - in_min) + out_min;
+}
 
-  if (r < 15){
-    duty_cycle=0;
+void update_servos (float angle_cmd, float vel_cmd) {
+
+  float cmd_scale = abs(angle_cmd) + abs(vel_cmd);
+  if (cmd_scale < 1.0) {
+    cmd_scale = 1.0;
   }
 
-  //find angle to determine driving mode
-  if (xVal == 0){
-    xVal = 0.0001; 
+  float ctrl_l = (vel_cmd - angle_cmd) / cmd_scale;
+  float ctrl_r = (vel_cmd + angle_cmd) / cmd_scale;
+
+  double sig_l = scaler(abs(ctrl_l), 0.0, 1.0, 0.0, 8191.0);
+  double sig_r = scaler(abs(ctrl_r), 0.0, 1.0, 0.0, 8191.0);
+
+  if(abs(angle_cmd) + abs(vel_cmd)<.15){
+    sig_l = 0;
+    sig_r = 0;
   }
 
-  theta = atan2(yVal, xVal);
-  theta_deg = theta * 180.0 / M_PI;
-  if(theta_deg < 0)
-  {
-    theta_deg = theta_deg + 360;
-  }
-
-  //Figure out Section of Graph
-
-  //PIVOT RIGHT
-  if (theta_deg <  45 or theta_deg > 315) {
-    leftD = 0;
-    rightD = 1;
+  if(ctrl_l< 0){
     digitalWrite(motor1Pin1, HIGH);
     digitalWrite(motor1Pin2, LOW);
-    digitalWrite(motor2Pin1, LOW);
-    digitalWrite(motor2Pin2, HIGH);
-    DCL = duty_cycle;
-    DCR = duty_cycle;
-  }
-
-  //STRAIGHT AHEAD
-  else if (theta_deg > 45 and theta_deg < 135) {
-    leftD = 0;
-    rightD = 0;
-    digitalWrite(motor1Pin1, HIGH);
-    digitalWrite(motor1Pin2, LOW);
-    digitalWrite(motor2Pin1, HIGH);
-    digitalWrite(motor2Pin2, LOW);
-    DCL = duty_cycle;
-    DCR = duty_cycle;
-  }
-
-  //PIVOT LEFT
-  else if (theta_deg > 135 and theta_deg < 225) {
-    leftD = 1;
-    rightD = 0;
+  } else{
     digitalWrite(motor1Pin1, LOW);
     digitalWrite(motor1Pin2, HIGH);
-    digitalWrite(motor2Pin1, HIGH);
-    digitalWrite(motor2Pin2, LOW);
-    DCL = duty_cycle;
-    DCR = duty_cycle;
   }
 
-  //STRAIGHT BACKWARDS
-  else if (theta_deg > 225 and theta_deg < 315) {
-    leftD = 1;
-    rightD = 1;
-    digitalWrite(motor1Pin1, LOW);
-    digitalWrite(motor1Pin2, HIGH);
+  if (ctrl_r< 0){
+    digitalWrite(motor2Pin1, HIGH);
+    digitalWrite(motor2Pin2, LOW);
+  } else {
     digitalWrite(motor2Pin1, LOW);
     digitalWrite(motor2Pin2, HIGH);
-    DCL = duty_cycle;
-    DCR = duty_cycle;
   }
-  Serial.println(xVal);
-  Serial.println(yVal);
-  Serial.println("cycles");
-  Serial.println(DCL);
-  Serial.println(DCR);
-  Serial.println(theta_deg);
-  //Based on leftD and rightD, set motor directions
-  //Send DCL and DCR to motors
-  ledcWrite(motor1Channel, DCL);
-  ledcWrite(motor2Channel, DCR);
+
+  ledcWrite(motor1Channel, sig_l);
+  ledcWrite(motor2Channel, sig_r);
+  Serial.println(sig_l);
+  Serial.println(sig_r);
   
 }
 
@@ -151,13 +116,12 @@ void loop(){
     int val = atoi(packetBuffer+2);
     
     if (packetBuffer[0] == 'y'){
-      yVal = val / 327.69;
+      yVal = val / MAX_VAL;
     }
     
     if (packetBuffer[0] == 'x'){
-      xVal = val / 327.69;
+      xVal = val / MAX_VAL;
     }
-    
+    update_servos(xVal, yVal);
   }
-  update_servos();
 }
