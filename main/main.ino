@@ -23,13 +23,16 @@ int leftD, rightD; //0 is forward, 1 is backward
 
 const int enablePin1 = 10;
 const int enablePin2 = 5;
-const int motor1Pin1 = 23;
-const int motor1Pin2 = 18;
-const int motor2Pin1 = 21;
-const int motor2Pin2 = 22;
+const int motor2Pina = 19;
+const int motor2Pinb = 23;
+const int motor1Pina = 21;
+const int motor1Pinb = 22;
 
-const int motor1Channel = 0;
-const int motor2Channel = 1;
+const int motor1Channela = 0;
+const int motor1Channelb = 1;
+const int motor2Channela = 2;
+const int motor2Channelb = 3;
+
 const int resolution = 13;
 const int freq = 50;
 long heartbeat = 0;
@@ -58,23 +61,21 @@ void update_servos (float angle_cmd, float vel_cmd) {
   }
 
   if(ctrl_l< 0){
-    digitalWrite(motor1Pin1, HIGH);
-    digitalWrite(motor1Pin2, LOW);
+    ledcWrite(motor1Channelb, 0);
+    ledcWrite(motor1Channela, sig_l);
   } else{
-    digitalWrite(motor1Pin1, LOW);
-    digitalWrite(motor1Pin2, HIGH);
+    ledcWrite(motor1Channela, 0);
+    ledcWrite(motor1Channelb, sig_l);
   }
 
   if (ctrl_r< 0){
-    digitalWrite(motor2Pin1, HIGH);
-    digitalWrite(motor2Pin2, LOW);
+    ledcWrite(motor2Channelb, 0);
+    ledcWrite(motor2Channela, sig_r);
   } else {
-    digitalWrite(motor2Pin1, LOW);
-    digitalWrite(motor2Pin2, HIGH);
+    ledcWrite(motor2Channela, 0);
+    ledcWrite(motor2Channelb, sig_r);
   }
-
-  ledcWrite(motor1Channel, sig_l);
-  ledcWrite(motor2Channel, sig_r);
+  
   Serial.println(sig_l);
   Serial.println(sig_r);
   
@@ -88,19 +89,19 @@ void setup() {
 
   udp.begin(UDPPort); // strange bug needs to come after WiFi.begin but before connect
 
-  ledcSetup(motor1Channel, freq, resolution);
-  ledcSetup(motor2Channel, freq, resolution);
-  ledcAttachPin(enablePin1, motor1Channel);
-  ledcAttachPin(enablePin2, motor2Channel);
-
-  pinMode(motor1Pin1, OUTPUT);
-  pinMode(motor1Pin2, OUTPUT);
-  pinMode(motor2Pin1, OUTPUT);
-  pinMode(motor2Pin2, OUTPUT);
+  ledcSetup(motor1Channela, freq, resolution);
+  ledcSetup(motor1Channelb, freq, resolution);
+  ledcSetup(motor2Channela, freq, resolution);
+  ledcSetup(motor2Channelb, freq, resolution);
+  ledcAttachPin(motor1Pina, motor1Channela);
+  ledcAttachPin(motor1Pinb, motor1Channelb);
+  ledcAttachPin(motor2Pina, motor2Channela);
+  ledcAttachPin(motor2Pinb, motor2Channelb);
   
 }
 
 void loop(){
+
   int packetSize = udp.parsePacket();
 
   if (packetSize) {

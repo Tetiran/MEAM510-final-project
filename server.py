@@ -21,10 +21,15 @@ sock = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
 x = 0
 y = 0
+grip = False
+
 
 def joystick():
+    BTN_TR_state = False
     global x
     global y
+    global grip
+    lastgrip = 0
     while 1:
         events = get_gamepad()
         for event in events:
@@ -33,6 +38,10 @@ def joystick():
                     x = event.state
                 elif (event.code == 'ABS_Y'):
                     y = event.state
+                elif (event.code == 'BTN_TR'):
+                    BTN_TR_state= not BTN_TR_state
+                    if BTN_TR_state:
+                        grip = not grip
 
                 r = math.sqrt(x**2 + y**2)
                 
@@ -78,6 +87,7 @@ def server():
         time.sleep(.05)
         sock.sendto(bytes('x_'+str(x), 'utf-8'), (UDP_IP, UDP_PORT))
         sock.sendto(bytes('y_'+str(y), 'utf-8'), (UDP_IP, UDP_PORT))
+        sock.sendto(bytes('g_'+str(1 if grip else 0), 'utf-8'), (UDP_IP, UDP_PORT))
 
 
 def window():
@@ -89,6 +99,6 @@ def window():
 t1 = Thread(target = joystick)
 t2 = Thread(target = server)
 t3 = Thread(target = window)
-#t1.start()
+t1.start()
 t2.start()
 t3.start()
