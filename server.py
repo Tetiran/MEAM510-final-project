@@ -1,7 +1,6 @@
 from inputs import get_gamepad
 import socket
 import math
-from queue import Queue
 from threading import Thread
 
 from PyQt5.QtWidgets import QApplication, QMainWindow
@@ -21,14 +20,43 @@ sock = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
 x = 0
 y = 0
-grip = False
+Grip = False
+WallFollow = False
+MoveTo = False
 
+MoveToX = 5491
+MoveToY = 3382
+MoveToControlFreq = 10
+MoveToFinalDistance = 500
+
+
+## config
+Grip1Closed = -40
+Gip1Open = 40
+Grip2Closed = 180
+Grip2Open = 45
+TeamNumber = 3
+
+FollowDistance = 25
+FollowPGain = .005
+FollowIGain = 0.0
+FollowControlFreq = 20
+FollowVelocity =.5
+TurnDistance = 20
+TurnPGain = -.5
+RotationDelay = 500
+MoveToPGain =.2
+MoveToForwardVelocity = .2
 
 def joystick():
     BTN_TR_state = False
+    BTN_SOUTH_STATE = False
+    BTN_WEST_STATE = False
     global x
     global y
-    global grip
+    global Grip
+    global WallFollow
+    global MoveTo
     lastgrip = 0
     while 1:
         events = get_gamepad()
@@ -41,7 +69,15 @@ def joystick():
                 elif (event.code == 'BTN_TR'):
                     BTN_TR_state= not BTN_TR_state
                     if BTN_TR_state:
-                        grip = not grip
+                        Grip = not Grip
+                elif (event.code == 'BTN_SOUTH'):
+                    BTN_SOUTH_STATE= not BTN_SOUTH_STATE
+                    if BTN_SOUTH_STATE:
+                        WallFollow = not WallFollow
+                elif (event.code == 'BTN_WEST'):
+                    BTN_WEST_STATE= not BTN_WEST_STATE
+                    if BTN_WEST_STATE:
+                        MoveTo = not MoveTo
 
                 r = math.sqrt(x**2 + y**2)
                 
@@ -62,8 +98,8 @@ class Window(QMainWindow):
         painter = QPainter(self)
 
         #60 x 155 in field
-        offset=.03*w
-        f_width= .94*w
+        offset = .03*w
+        f_width = .94*w
         f_height = f_width*(60/144)
         foot = f_width /12
 
@@ -81,14 +117,34 @@ class Window(QMainWindow):
 
 
 def server():
-
+    LastTime = [0,0,0]
+    freq = [20, 3, 1]
+    SentConfig= False
+        
     while True:
-        ## post at 20hz
-        time.sleep(.05)
-        sock.sendto(bytes('x_'+str(x), 'utf-8'), (UDP_IP, UDP_PORT))
-        sock.sendto(bytes('y_'+str(y), 'utf-8'), (UDP_IP, UDP_PORT))
-        sock.sendto(bytes('g_'+str(1 if grip else 0), 'utf-8'), (UDP_IP, UDP_PORT))
+        if not SentConfig:
+            sock.sendto(bytes('c_' + str(Grip1Closed) + '_'+ str(Gip1Open) + '_' 
+            + str(Grip2Closed)+ '_' + str(Grip2Open)+ '_' + str(TeamNumber)+ '_' + str(FollowDistance)
+            + '_' + str(FollowPGain)+ '_' + str(FollowIGain)+ '_' + str(FollowControlFreq) + '_' + str(FollowVelocity)
+            + '_' + str(TurnDistance)+ '_' + str(TurnPGain) + '_' + str(RotationDelay) + '_' + str(MoveToControlFreq)
+            + '_' + str(MoveToPGain) + '_' + str(MoveToFinalDistance)+ '_' + str(MoveToForwardVelocity)
+            , 'utf-8'), (UDP_IP, UDP_PORT))
+            SentConfig = True
 
+        ms = time.time()*1000.0
+        ## post at 20hz
+        if (ms> LastTime[0] + 1000/freq[0]):
+            LastTime[0]=ms
+            sock.sendto(bytes('x_'+str(x), 'utf-8'), (UDP_IP, UDP_PORT))
+            sock.sendto(bytes('y_'+str(y), 'utf-8'), (UDP_IP, UDP_PORT))
+        if (ms> LastTime[1] + 1000/freq[1]):
+            LastTime[1]=ms
+            sock.sendto(bytes('g_'+str(1 if Grip else 0), 'utf-8'), (UDP_IP, UDP_PORT))
+        if (ms> LastTime[2] + 1000/freq[2]):
+            sock.sendto(bytes('w_'+str(1 if WallFollow else 0), 'utf-8'), (UDP_IP, UDP_PORT))
+            sock.sendto(bytes('m_'+str(1 if MoveTo else 0) + '_'+ str(MoveToX) + '_'+ str(MoveToY), 'utf-8'), (UDP_IP, UDP_PORT))
+            LastTime[2]=ms
+        time.sleep(0)
 
 def window():
     positions = {}
