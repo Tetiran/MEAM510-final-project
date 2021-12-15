@@ -407,7 +407,7 @@ void update_vive(){
 
   RobotX = (V1X+V2X)/2;
   RobotY = (V1Y+V2Y)/2;
-  RobotAngle = get_angle(V1X, V1Y, V2X, V2Y);
+  RobotAngle = atan2(V2Y - V1Y, V2X - V1X);
   Serial.print("Robot X");
   Serial.println(RobotX);
   Serial.print("Robot Y");
@@ -427,8 +427,16 @@ void move_to(){
 
   } else{
 
-    double TargetAngle = get_angle(0,0, MoveToX, MoveToY);
-    TargetAngle = adjustAngle90(TargetAngle); 
+    double TargetAngle = atan2(MoveToY - RobotY, MoveToX - RobotX);
+    if(TargetAngle< PI/2){
+      TargetAngle+= PI/2;
+    } else{
+      TargetAngle = -2 * PI + (TargetAngle + PI/2); 
+    }
+    //TargetAngle = adjustAngle90(TargetAngle); 
+    double AngleError = TargetAngle - RobotAngle;
+
+    /**
     double errors[] = {RobotAngle - TargetAngle, (RobotAngle + 2*PI) - TargetAngle, RobotAngle - (TargetAngle+2*PI)};
     double abs_errors[] = {abs(errors[0]), abs(errors[1]), abs(errors[2])};
    
@@ -442,18 +450,15 @@ void move_to(){
         AngleError = errors[i];
       }
     }
-
-    float UpdateAngle = AngleError * MoveToPGain;
+    **/
+    double UpdateAngle = AngleError * MoveToPGain;
     update_servos(UpdateAngle, .5);
-    // Serial.print("TargetAngle");
-    // Serial.println(TargetAngle);
-    // Serial.print("Angle Error");
-    // Serial.println(AngleError);
-    // Serial.print("update angle control");
-    // Serial.println(UpdateAngle);
-    Serial.println("Position");
-    Serial.println(RobotX);
-    Serial.println(RobotY);      
+    Serial.print("TargetAngle");
+    Serial.println(TargetAngle);
+    Serial.print("Angle Error");
+    Serial.println(AngleError);
+    Serial.print("update angle control");
+    Serial.println(UpdateAngle);  
 
   }
 

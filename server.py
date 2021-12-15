@@ -24,8 +24,8 @@ Grip = False
 WallFollow = False
 MoveTo = False
 
-MoveToX = 5300
-MoveToY = 3800
+MoveToX = 4463
+MoveToY = 4657
 MoveToControlFreq = 10
 MoveToFinalDistance = 500
 
@@ -43,7 +43,7 @@ FollowIGain = 0.0
 FollowControlFreq = 20
 FollowVelocity =.5
 TurnDistance = 20
-TurnPGain = -.5
+TurnPGain = .5
 RotationDelay = 500
 MoveToPGain =.2
 MoveToForwardVelocity = .2
