@@ -365,13 +365,26 @@ float get_distance(int trig, int echo){
   return distance;
 }
 
+//convert angle from -pi to pi to 0 to 2pi 
 float get_angle(int X_1, int Y_1, int X_2, int Y_2) {
   double angle = atan2(Y_2 - Y_1, X_2 - X_1);
   if (angle < 0){
-      angle = angle + 2* PI;
+      angle = angle + 2*PI;
   }
   return angle; 
 }
+
+//adjust desired angle from atan2 to robot frame desired orientation for Move_to
+double adjustAngle90(double angle) {
+  double angleAdjusted = angle - PI/2;
+  if (angleAdjusted < 0){
+    angleAdjusted += 2 * PI;
+  } else if (angleAdjusted > 2 * PI){
+    angleAdjusted -= 2 * PI; 
+  }
+  return angleAdjusted;
+}
+
 
 void update_vive(){
   int V1X = 0;
@@ -415,9 +428,10 @@ void move_to(){
   } else{
 
     double TargetAngle = get_angle(0,0, MoveToX, MoveToY);
+    TargetAngle = adjustAngle90(TargetAngle); 
     double errors[] = {RobotAngle - TargetAngle, (RobotAngle + 2*PI) - TargetAngle, RobotAngle - (TargetAngle+2*PI)};
     double abs_errors[] = {abs(errors[0]), abs(errors[1]), abs(errors[2])};
-
+   
     int i;
     double AngleError = errors[0];
     double min_error = abs_errors[0];
