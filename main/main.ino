@@ -47,7 +47,7 @@ bool GripState = 0;
 bool WallFollow =0;
 bool MoveTo = 0;
 long heartbeat = 0;
-int TeamNum = 0;
+int RobotNum = 0;
 
 int Gip1Open = 0;
 int Grip1Closed = 0;
@@ -98,7 +98,9 @@ double RobotAngle = 0;
 Vive510 vive1(VIVEPIN1);
 Vive510 vive2(VIVEPIN2);
 
-long LastVive=0;
+long LastVive = 0;
+
+long LastLocationSend = 0;
 
 
 float scaler(float x, float in_min, float in_max, float out_min, float out_max)
@@ -267,7 +269,7 @@ void recieve_commands(){
       Grip1Closed = atoi(strtok(NULL, "_"));
       Grip2Open = atoi(strtok(NULL, "_"));
       Grip2Closed = atoi(strtok(NULL, "_"));
-      TeamNum = atoi(strtok(NULL, "_"));
+      RobotNum = atoi(strtok(NULL, "_"));
       FollowDistance = atof(strtok(NULL, "_"));
       FollowPGain = atof(strtok(NULL, "_"));
       FollowIGain = atof(strtok(NULL, "_"));
@@ -282,10 +284,6 @@ void recieve_commands(){
       MoveToForwardVelocity = atof(strtok(NULL, "_"));
     }
   }
-}
-
-void transmit_telemetry(){
-
 }
 
 float clamp(float val, float min, float max){
@@ -467,6 +465,17 @@ void move_to(){
   }
 }
 
+#define len 13
+
+void send_telemetry(){
+  char s[len];
+  // store into a string with format #:####,####, which is robotid, x, y
+  sprintf(s,"%1d:%4d,%4d",RobotNum, RobotX, RobotY); 
+  UdpRobots.beginPacket(ipTarget, UDPPortRobots);
+  UdpRobots.write((uint8_t *)s, len);
+  UdpRobots.endPacket();
+}
+
 void loop(){
   recieve_commands();
 
@@ -483,6 +492,12 @@ void loop(){
       update_vive();
       LastVive = millis();
     }
+  }
+
+  long time = millis();
+  if (time> LastLocationSend +1000){
+    LastLocationSend = millis();
+    send_telemetry();
   }
 
 }
