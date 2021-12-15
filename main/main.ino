@@ -8,7 +8,7 @@
 
 
 char packetBuffer[255]; //buffer to hold incoming packet
-const char* ssid     = "Death Roomba";
+const char* ssid     = "TP-Link_05AF";
 const char* password = "47543454";
 
 WiFiUDP UdpCommand;
@@ -160,8 +160,8 @@ void update_servos (float angle_cmd, float vel_cmd) {
 void setup() {                  
   Serial.begin(115200);  
  
-  WiFi.softAP(ssid);
-  WiFi.softAPConfig(IPAddress(192, 168, 1, 6),  IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0)); 
+  WiFi.config(IPAddress(192, 168, 1, 6),  IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
+  WiFi.begin(ssid, password); 
 
   UdpCommand.begin(UDPPortCommands);
   UdpRobots.begin(UDPPortRobots);
@@ -195,6 +195,11 @@ void setup() {
 
   vive1.begin();
   vive2.begin();
+
+  while(WiFi.status()!=WL_CONNECTED){
+    delay(500);
+    Serial.print(".");
+  }
   
 }
 void recieve_commands(){
@@ -435,22 +440,18 @@ void move_to(){
     }
     //TargetAngle = adjustAngle90(TargetAngle); 
     double AngleError = TargetAngle - RobotAngle;
-
     /**
-    double errors[] = {RobotAngle - TargetAngle, (RobotAngle + 2*PI) - TargetAngle, RobotAngle - (TargetAngle+2*PI)};
-    double abs_errors[] = {abs(errors[0]), abs(errors[1]), abs(errors[2])};
-   
-    int i;
-    double AngleError = errors[0];
-    double min_error = abs_errors[0];
-
-    for(i = 1; i < 3; i++) { 
-      if(abs_errors[i] < min_error) {
-        min_error = abs_errors[i];
-        AngleError = errors[i];
-      }
+    if (AngleError > PI) {
+      AngleError = 
     }
     **/
+    if (AngleError < -PI) {
+      AngleError += 2*PI;
+    } else if (AngleError > PI){
+      AngleError -= 2*PI;
+    }
+    
+
     double UpdateAngle = AngleError * MoveToPGain;
     update_servos(UpdateAngle, .5);
     Serial.print("TargetAngle");
