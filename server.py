@@ -118,7 +118,7 @@ class Window(QMainWindow):
 
 def server():
     LastTime = [0,0,0]
-    freq = [20, 3, 1]
+    freq = [20, 3, 3]
     SentConfig= False
         
     while True:
