@@ -24,8 +24,8 @@ Grip = False
 WallFollow = False
 MoveTo = False
 
-MoveToX = 5491
-MoveToY = 3382
+MoveToX = 5300
+MoveToY = 3800
 MoveToControlFreq = 10
 MoveToFinalDistance = 500
 

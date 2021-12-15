@@ -1,7 +1,7 @@
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <tgmath.h>
+#include <math.h>
 #include "vive510.h"
 
 #define MAX_VAL 32769.0
@@ -365,6 +365,14 @@ float get_distance(int trig, int echo){
   return distance;
 }
 
+float get_angle(int X_1, int Y_1, int X_2, int Y_2) {
+  double angle = atan2(Y_2 - Y_1, X_2 - X_1);
+  if (angle < 0){
+      angle = angle + 2* PI;
+  }
+  return angle; 
+}
+
 void update_vive(){
   int V1X = 0;
   int V1Y = 0; 
@@ -386,7 +394,7 @@ void update_vive(){
 
   RobotX = (V1X+V2X)/2;
   RobotY = (V1Y+V2Y)/2;
-  RobotAngle = atan2(V1Y - V2Y, V1X - V2X) + PI;
+  RobotAngle = get_angle(V1X, V1Y, V2X, V2Y);
   Serial.print("Robot X");
   Serial.println(RobotX);
   Serial.print("Robot Y");
@@ -406,14 +414,32 @@ void move_to(){
 
   } else{
 
-    double TargetAngle = atan2(MoveToY, MoveToX)+PI;
-    double AngleError = RobotAngle - TargetAngle;
+    double TargetAngle = get_angle(0,0, MoveToX, MoveToY);
+    double errors[] = {RobotAngle - TargetAngle, (RobotAngle + 2*PI) - TargetAngle, RobotAngle - (TargetAngle+2*PI)};
+    double abs_errors[] = {abs(errors[0]), abs(errors[1]), abs(errors[2])};
+
+    int i;
+    double AngleError = errors[0];
+    double min_error = abs_errors[0];
+
+    for(i = 1; i < 3; i++) { 
+      if(abs_errors[i] < min_error) {
+        min_error = abs_errors[i];
+        AngleError = errors[i];
+      }
+    }
+
     float UpdateAngle = AngleError * MoveToPGain;
     update_servos(UpdateAngle, .5);
-    Serial.print("TargetAngle");
-    Serial.println(TargetAngle);
-    Serial.print("update angle control");
-    Serial.println(UpdateAngle);
+    // Serial.print("TargetAngle");
+    // Serial.println(TargetAngle);
+    // Serial.print("Angle Error");
+    // Serial.println(AngleError);
+    // Serial.print("update angle control");
+    // Serial.println(UpdateAngle);
+    Serial.println("Position");
+    Serial.println(RobotX);
+    Serial.println(RobotY);      
 
   }
 
