@@ -27,7 +27,7 @@ MoveTo = False
 MoveToX = 4000
 MoveToY = 4000
 MoveToControlFreq = 10
-MoveToFinalDistance = 500
+MoveToFinalDistance = 200
 
 
 ## config
@@ -35,7 +35,7 @@ Grip1Closed = -40
 Gip1Open = 40
 Grip2Closed = 180
 Grip2Open = 45
-TeamNumber = 3
+TeamNumber = 8
 
 FollowDistance = 25
 FollowPGain = .005
