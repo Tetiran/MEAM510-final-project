@@ -16,7 +16,9 @@ const char* password = "52665134";
 WiFiUDP UdpCommand;
 WiFiUDP UdpRobots;
 WiFiUDP UdpCans;
+WiFiUDP UdpTelem;
 unsigned int UDPPortCommands = 5005;
+unsigned int UDPPortTelem = 5006;
 unsigned int UDPPortCans = 1510;
 unsigned int UDPPortRobots = 2510;
 
@@ -107,7 +109,7 @@ double RobotAngle = 0;
 #define IR_PIN_1 33
 #define IR_PIN_2 27
 
-#define TELEM_BUF_LEN 13
+#define TELEM_BUF_LEN 12
 
 Vive510 vive1(VIVEPIN1);
 Vive510 vive2(VIVEPIN2);
@@ -184,7 +186,7 @@ void setup() {
 
   UdpCommand.begin(UDPPortCommands);
   UdpRobots.begin(UDPPortRobots);
-  UdpCans.begin(UDPPortCans);
+  UdpTelem.begin(UDPPortTelem);
 
   ledcSetup(motor1Channela, freq, resolution);
   ledcSetup(motor1Channelb, freq, resolution);
@@ -457,7 +459,6 @@ void move_to(){
     } else if (AngleError > PI){
       AngleError -= 2*PI;
     }
-    
 
     double UpdateAngle = AngleError * MoveToPGain;
     update_servos(UpdateAngle, .5);
@@ -549,16 +550,24 @@ void send_telemetry(){
   char s[TELEM_BUF_LEN];
   // store into a string with format #:####,####, which is robotid, x, y
   sprintf(s,"%1d:%4d,%4d",RobotNum, RobotX, RobotY); 
+  Serial.printf("sending data: %s",s);
   UdpRobots.beginPacket(ipTarget, UDPPortRobots);
   UdpRobots.write((uint8_t *)s, TELEM_BUF_LEN);
   UdpRobots.endPacket();
 }
 
+void send_telemetry_private(){
+  char s[TELEM_BUF_LEN];
+  // store into a string with format #:####,####, which is robotid, x, y
+  sprintf(s,"%1d:%4d,%4d",RobotNum, RobotX, RobotY); 
+  Serial.printf("sending data: %s",s);
+  UdpTelem.beginPacket(ipTarget, UDPPortTelem);
+  UdpTelem.write((uint8_t *)s, TELEM_BUF_LEN);
+  UdpTelem.endPacket();
+}
+
 void loop(){
   recieve_commands();
-  float t =  millis() / 1000.0;
-  Serial.print("curr time");
-  Serial.println(t);
 
   if (WallFollow){
     wall_follow();
@@ -575,16 +584,18 @@ void loop(){
   if (millis()> LastVive + 100){
     update_vive();
     LastVive = millis();
-    t =  millis() / 1000.0;
-    Serial.print("post vive time");
-    Serial.println(t);
   }
   
-  
-
   long time = millis();
   if (time> LastLocationSend +1000){
     LastLocationSend = millis();
     send_telemetry();
+  }
+
+  static long lastprivatelocation = 0;
+  time = millis();
+  if (time> lastprivatelocation +100){
+    lastprivatelocation = millis();
+    send_telemetry_private();
   }
 }

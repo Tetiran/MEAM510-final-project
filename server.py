@@ -8,18 +8,19 @@ from PyQt5.QtGui import QPainter, QColor, QFont, QPen
 from PyQt5.QtCore import Qt
 import PyQt5
 import sys, time
+import re
 
 UDP_IP = "192.168.1.6"
 UDP_IP_BROADCAST = "192.168.1.255"
 UDP_PORT = 5005
+UDP_PORT_TELEM = 5006
 UDP_PORT_ROBOTS = 2510
 UDP_PORT_CANS = 1510
 radius= 32768
 
-print("UDP target IP: %s" % UDP_IP)
-print("UDP target port: %s" % UDP_PORT)
-
 CommandSocket = socket.socket(socket.AF_INET, # Internet
+                     socket.SOCK_DGRAM) # UDP
+TelemSocket = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
 
 RobotSocket = socket.socket(socket.AF_INET, # Internet
@@ -30,14 +31,16 @@ CanSocket = socket.socket(socket.AF_INET, # Internet
 
 RobotSocket.bind(('', UDP_PORT_ROBOTS))
 CanSocket.bind(('', UDP_PORT_CANS))
+TelemSocket.bind(('',UDP_PORT_TELEM))
 RobotSocket.setblocking(0)
 CanSocket.setblocking(0)
+TelemSocket.setblocking(0)
 
 
 
 x = 0
 y = 0
-Grip = False
+Grip = True
 WallFollow = False
 MoveTo = False
 BeaconTrack = False
@@ -53,7 +56,7 @@ Grip1Closed = -40
 Gip1Open = 40
 Grip2Closed = 180
 Grip2Open = 45
-TeamNumber = 8
+TeamNumber = 7
 
 FollowDistance = 25
 FollowPGain = .005
@@ -75,8 +78,18 @@ Y_MIN_SQUARE = 3455
 X_MAX_SQUARE = 5210
 Y_MAX_SQUARE = 5223
 
-cans = []
-robots = []
+#vive coordinates corresponding to top left corner of board  bonus square
+X_MIN_SQUARE_CANS = 4979
+Y_MIN_SQUARE_CANS = 4735
+#vive coorindates corresponding to bottom right of board bonus square
+X_MAX_SQUARE_CANS = 2946
+Y_MAX_SQUARE_CANS = 2928
+
+
+cans = {}
+robots = {}
+
+window = 0
 
 def joystick():
     BTN_TR_state = False
@@ -126,6 +139,7 @@ class Window(QMainWindow):
        self.data = positions
        self.setGeometry(300, 300, 800, 600)
        self.setWindowTitle("Field Viewer")
+       
        self.show()
 
     def paintEvent(self, event):
@@ -137,7 +151,6 @@ class Window(QMainWindow):
         f_width = .94*w
         f_height = f_width*(60/144)
         foot = f_width /12
-        inch = foot/12
 
         # draw field
         painter.setPen(QPen(Qt.black,  3, Qt.SolidLine))
@@ -154,25 +167,56 @@ class Window(QMainWindow):
         black =QColor()
         black.setHsv(255, 255, 255)
 
+        painter.setPen(black)
+        painter.setFont(QFont('Decorative', 10))
+        painter.drawText(10, 15, "Gripper state {}".format("Open" if Grip else "closed"))
+        
+
         #draw cans
         for can in cans:
-            number = cans[can][0]
-            #fix coorindate offset and scale (might need to switch height and width depending on whatx and y corresond to)
-            x_coord = (cans[can][1] - X_MIN_VIVE)/(X_MAX_VIVE - X_MIN_VIVE)*f_width
-            y_coord = (cans[can][2] - Y_MIN_VIVE)/(Y_MAX_VIVE - Y_MIN_VIVE)*f_height
-            painter.drawEllipse(x_coord, y_coord, round(CANRADIUS*inch), round(CANRADIUS*inch), black)
-            # painter.drawText(x_coord, y_coord,  round(inch), round(inch))
+            number =  int(can)
+            x_coord = cans[can][0]
+            y_coord = cans[can][1]
+
+            ONE_FOOT_VIVE_X = abs((X_MAX_SQUARE_CANS-X_MIN_SQUARE_CANS)/3)
+            ONE_FOOT_VIVE_Y = abs((Y_MAX_SQUARE_CANS-Y_MIN_SQUARE_CANS)/3)
+            VIVE_TOP_LEFT_X = X_MIN_SQUARE_CANS + 4.5*  ONE_FOOT_VIVE_X
+            VIVE_TOP_LEFT_Y = Y_MIN_SQUARE_CANS + 1.0 * ONE_FOOT_VIVE_Y
+
+            CanXFootOffset = -(x_coord-VIVE_TOP_LEFT_X)/ONE_FOOT_VIVE_X
+            CAnYFootOffset = -(y_coord-VIVE_TOP_LEFT_Y)/ONE_FOOT_VIVE_Y
+            green =QColor()
+            green.setHsv(170, 98, 78)
+            painter.setPen(green)
+            painter.drawEllipse(round(offset+foot*CanXFootOffset), round(offset+foot*CAnYFootOffset), 15, 15)
+            painter.setPen(black)
+            painter.setFont(QFont('Decorative', 10))
+            painter.drawText(round(offset+foot*CanXFootOffset), round(offset+foot*CAnYFootOffset), str(number))
 
         #draw robots
         for bot in robots:
-            number =  robots[bot][0]
+            number =  int(bot)
             x_coord = robots[bot][0]
-            y_coord = robots[bot][0]
-            painter.drawRect(x_coord, y_coord, round(foot), round(foot), black)
+            y_coord = robots[bot][1]
+            ONE_FOOT_VIVE_X = (X_MAX_SQUARE-X_MIN_SQUARE)/3
+            ONE_FOOT_VIVE_Y = (Y_MAX_SQUARE-Y_MIN_SQUARE)/3
+            VIVE_TOP_LEFT_X = X_MIN_SQUARE - 4.5* ONE_FOOT_VIVE_X
+            VIVE_TOP_LEFT_Y = Y_MIN_SQUARE - 1.0 * ONE_FOOT_VIVE_Y
+
+            RobotXFootOffset = (x_coord-VIVE_TOP_LEFT_X)/ONE_FOOT_VIVE_X
+            RobotYFootOffset = (y_coord-VIVE_TOP_LEFT_Y)/ONE_FOOT_VIVE_Y
+
+            orange =QColor()
+            orange.setHsv(39, 81, 97)
+            painter.setPen(orange)
+            painter.drawEllipse(round(offset+foot*RobotXFootOffset), round(offset+foot*RobotYFootOffset), 35, 35)
+            painter.setPen(black)
+            painter.setFont(QFont('Decorative', 10))
+            painter.drawText(round(offset+foot*RobotXFootOffset), round(offset+foot*RobotYFootOffset), str(number))
 
 
 
-def server():
+def server(window):
     LastTime = [0,0,0]
     freq = [20, 5, 3]
     SentConfig= False
@@ -205,27 +249,50 @@ def server():
 
         try:
             data, addr = RobotSocket.recvfrom(1024) # buffer size is 1024 bytes
-            if (len(data) == 13):
-                if data.decode('utf-8')[0] == str(TeamNumber):
-                    print("received message: {}".format(data.decode('utf-8')))
+            if (len(data) >= 12):
+                data= data.decode('utf-8')
+                num = int(data[0])
+                posx = int(data[2:6])
+                posy = int(data[7:11])
+                print("robot message: {}".format(data))
+                robots[str(num)] = (posx, posy)
+                window.update()
         except socket.error as e:
             pass        
         try:
             data, addr = CanSocket.recvfrom(1024) # buffer size is 1024 bytes
-            if (len(data)):
-                print("received message: {}".format(data.decode('utf-8')))
+            if (len(data) >= 12):
+                data= data.decode('utf-8')
+                num = int(data[0])
+                posx = int(data[2:6])
+                posy = int(data[7:11])
+                cans[str(num)] = (posx, posy)
+                window.update()
+                print("can message: {}".format(data))
         except socket.error as e:
             pass
+        try:
+            data, addr = TelemSocket.recvfrom(1024) # buffer size is 1024 bytes
+            if (len(data) >= 12):
+                data= data.decode('utf-8')
+                if(int(data[0]) == TeamNumber):
+                    posx = int(data[2:6])
+                    posy = int(data[7:11])
+                    robots[str(TeamNumber)] = (posx, posy)
+                    window.update()
+        except socket.error as e:
+            pass
+
             
                 
 def main():
-    t1 = Thread(target = joystick)
-    t2 = Thread(target = server)
-    t1.start()
-    t2.start()
     positions = {}
     app = QApplication(sys.argv)
     window = Window(positions)
+    t1 = Thread(target = joystick)
+    t2 = Thread(target = server, args=[window])
+    t1.start()
+    t2.start()
     sys.exit(app.exec_())
     print('yes')
   
