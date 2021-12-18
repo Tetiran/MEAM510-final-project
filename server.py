@@ -10,19 +10,37 @@ import PyQt5
 import sys, time
 
 UDP_IP = "192.168.1.6"
+UDP_IP_BROADCAST = "192.168.1.255"
 UDP_PORT = 5005
+UDP_PORT_ROBOTS = 2510
+UDP_PORT_CANS = 1510
 radius= 32768
 
 print("UDP target IP: %s" % UDP_IP)
 print("UDP target port: %s" % UDP_PORT)
 
-sock = socket.socket(socket.AF_INET, # Internet
+CommandSocket = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
+
+RobotSocket = socket.socket(socket.AF_INET, # Internet
+                     socket.SOCK_DGRAM) # UDP
+
+CanSocket = socket.socket(socket.AF_INET, # Internet
+                     socket.SOCK_DGRAM) # UDP
+
+RobotSocket.bind(('', UDP_PORT_ROBOTS))
+CanSocket.bind(('', UDP_PORT_CANS))
+RobotSocket.setblocking(0)
+CanSocket.setblocking(0)
+
+
+
 x = 0
 y = 0
 Grip = False
 WallFollow = False
 MoveTo = False
+BeaconTrack = False
 
 MoveToX = 4000
 MoveToY = 4000
@@ -48,16 +66,20 @@ RotationDelay = 500
 MoveToPGain =.2
 MoveToForwardVelocity = .2
 
+start = int(round(time.time() *1000))
+BeaconGain = .5
+
 def joystick():
     BTN_TR_state = False
     BTN_SOUTH_STATE = False
     BTN_WEST_STATE = False
+    BTN_WEST_EAST = False
     global x
     global y
     global Grip
     global WallFollow
     global MoveTo
-    lastgrip = 0
+    global BeaconTrack
     while 1:
         events = get_gamepad()
         for event in events:
@@ -78,6 +100,10 @@ def joystick():
                     BTN_WEST_STATE= not BTN_WEST_STATE
                     if BTN_WEST_STATE:
                         MoveTo = not MoveTo
+                elif (event.code == 'BTN_EAST'):
+                    BTN_WEST_EAST= not BTN_WEST_EAST
+                    if BTN_WEST_EAST:
+                        BeaconTrack = not BeaconTrack
 
                 r = math.sqrt(x**2 + y**2)
                 
@@ -121,13 +147,14 @@ def server():
     freq = [20, 5, 3]
     SentConfig= False
         
-    while True:
+    while 1:
         if not SentConfig:
-            sock.sendto(bytes('c_' + str(Grip1Closed) + '_'+ str(Gip1Open) + '_' 
+            CommandSocket.sendto(bytes('c_' + str(Grip1Closed) + '_'+ str(Gip1Open) + '_' 
             + str(Grip2Closed)+ '_' + str(Grip2Open)+ '_' + str(TeamNumber)+ '_' + str(FollowDistance)
             + '_' + str(FollowPGain)+ '_' + str(FollowIGain)+ '_' + str(FollowControlFreq) + '_' + str(FollowVelocity)
             + '_' + str(TurnDistance)+ '_' + str(TurnPGain) + '_' + str(RotationDelay) + '_' + str(MoveToControlFreq)
-            + '_' + str(MoveToPGain) + '_' + str(MoveToFinalDistance)+ '_' + str(MoveToForwardVelocity)
+            + '_' + str(MoveToPGain) + '_' + str(MoveToFinalDistance) + '_' + str(MoveToForwardVelocity)
+            + '_' + str(BeaconGain)
             , 'utf-8'), (UDP_IP, UDP_PORT))
             SentConfig = True
 
@@ -135,26 +162,43 @@ def server():
         ## post at 20hz
         if (ms> LastTime[0] + 1000/freq[0]):
             LastTime[0]=ms
-            sock.sendto(bytes('x_'+str(x), 'utf-8'), (UDP_IP, UDP_PORT))
-            sock.sendto(bytes('y_'+str(y), 'utf-8'), (UDP_IP, UDP_PORT))
+            CommandSocket.sendto(bytes('x_'+str(x), 'utf-8'), (UDP_IP, UDP_PORT))
+            CommandSocket.sendto(bytes('y_'+str(y), 'utf-8'), (UDP_IP, UDP_PORT))
         if (ms> LastTime[1] + 1000/freq[1]):
             LastTime[1]=ms
-            sock.sendto(bytes('g_'+str(1 if Grip else 0), 'utf-8'), (UDP_IP, UDP_PORT))
+            CommandSocket.sendto(bytes('g_'+str(1 if Grip else 0), 'utf-8'), (UDP_IP, UDP_PORT))
         if (ms> LastTime[2] + 1000/freq[2]):
-            sock.sendto(bytes('w_'+str(1 if WallFollow else 0), 'utf-8'), (UDP_IP, UDP_PORT))
-            sock.sendto(bytes('m_'+str(1 if MoveTo else 0) + '_'+ str(MoveToX) + '_'+ str(MoveToY), 'utf-8'), (UDP_IP, UDP_PORT))
+            CommandSocket.sendto(bytes('w_'+str(1 if WallFollow else 0), 'utf-8'), (UDP_IP, UDP_PORT))
+            CommandSocket.sendto(bytes('m_'+str(1 if MoveTo else 0) + '_'+ str(MoveToX) + '_'+ str(MoveToY), 'utf-8'), (UDP_IP, UDP_PORT))
+            CommandSocket.sendto(bytes('t_'+str(1 if BeaconTrack else 0), 'utf-8'), (UDP_IP, UDP_PORT))
             LastTime[2]=ms
-        time.sleep(0)
 
-def window():
+        try:
+            data, addr = RobotSocket.recvfrom(1024) # buffer size is 1024 bytes
+            if (len(data) == 13):
+                if data.decode('utf-8')[0] == str(TeamNumber):
+                    print("received message: {}".format(data.decode('utf-8')))
+        except socket.error as e:
+            pass        
+        try:
+            data, addr = CanSocket.recvfrom(1024) # buffer size is 1024 bytes
+            if (len(data)):
+                print("received message: {}".format(data.decode('utf-8')))
+        except socket.error as e:
+            pass
+            
+                
+def main():
+    t1 = Thread(target = joystick)
+    t2 = Thread(target = server)
+    t1.start()
+    t2.start()
     positions = {}
     app = QApplication(sys.argv)
     window = Window(positions)
     sys.exit(app.exec_())
+    print('yes')
+  
+if __name__=="__main__":
+    main()
 
-t1 = Thread(target = joystick)
-t2 = Thread(target = server)
-t3 = Thread(target = window)
-t1.start()
-t2.start()
-t3.start()

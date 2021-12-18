@@ -8,8 +8,10 @@
 
 
 char packetBuffer[255]; //buffer to hold incoming packet
-const char* ssid     = "TP-Link_05AF";
-const char* password = "47543454";
+//const char* ssid     = "TP-Link_05AF";
+const char* ssid     = "TP-Link_E0C8";
+//const char* password = "47543454";
+const char* password = "52665134";
 
 WiFiUDP UdpCommand;
 WiFiUDP UdpRobots;
@@ -43,9 +45,12 @@ const int servo3Channel = 6;
 
 const int resolution = 13;
 const int freq = 50;
-bool GripState = 0;
-bool WallFollow =0;
-bool MoveTo = 0;
+
+bool GripState = false;
+bool WallFollow = false;
+bool MoveTo = false;
+bool BeaconTrack = false;
+
 long heartbeat = 0;
 int RobotNum = 0;
 
@@ -63,7 +68,7 @@ const int Echo2 = 38;
 const int Trig3 = 9;
 const int Echo3 = 35;
 
-int FollowRotation =0; // -1 is follow right 1 is follow left
+int FollowRotation = 0; // -1 is follow right 1 is follow left
 
 int FollowState = 0; // 0 is uninitialized, 1 is tracking
 
@@ -86,14 +91,23 @@ float MoveToPGain = 0;
 int MoveToFinalDistance = 0;
 float MoveToForwardVelocity = 0;
 
+long BeaconLastUpdate = 0;
+int BeaconTrackFreq =10;
+
 int RobotX = 0;
 int RobotY = 0;
 
+float BeaconGain = .1;
 
 double RobotAngle = 0;
 
 #define VIVEPIN1 26
 #define VIVEPIN2 32
+
+#define IR_PIN_1 33
+#define IR_PIN_2 27
+
+#define TELEM_BUF_LEN 13
 
 Vive510 vive1(VIVEPIN1);
 Vive510 vive2(VIVEPIN2);
@@ -124,7 +138,7 @@ void update_grip(){
   }
 }
 
-void update_servos (float angle_cmd, float vel_cmd) {
+void update_servos(float angle_cmd, float vel_cmd, bool deadzone = false) {
 
   float cmd_scale = abs(angle_cmd) + abs(vel_cmd);
   if (cmd_scale < 1.0) {
@@ -137,10 +151,13 @@ void update_servos (float angle_cmd, float vel_cmd) {
   double sig_l = scaler(abs(ctrl_l), 0.0, 1.0, 0.0, 8191.0);
   double sig_r = scaler(abs(ctrl_r), 0.0, 1.0, 0.0, 8191.0);
 
-  if(abs(angle_cmd) + abs(vel_cmd)<.15){
+  if (deadzone){
+    if(abs(angle_cmd) + abs(vel_cmd)<.15){
     sig_l = 0;
     sig_r = 0;
+    }
   }
+  
 
   if(ctrl_l< 0){
     ledcWrite(motor1Channelb, 0);
@@ -195,12 +212,15 @@ void setup() {
   pinMode(Echo2, INPUT);
   pinMode(Echo3, INPUT);
 
+  pinMode(IR_PIN_1, INPUT);
+  pinMode(IR_PIN_2, INPUT);
+
   vive1.begin();
   vive2.begin();
 
   while(WiFi.status()!=WL_CONNECTED){
     delay(500);
-    Serial.print(".");
+    Serial.println("no wifi");
   }
   
 }
@@ -218,13 +238,16 @@ void recieve_commands(){
     if (!WallFollow && !MoveTo){
       int val = atoi(packetBuffer+2);
       if (packetBuffer[0] == 'y'){
+        float t =  millis() / 1000.0;
+        Serial.print("Recieved Y time");
+        Serial.println(t);
         yVal = val / MAX_VAL;
-        update_servos(xVal, yVal);
+        update_servos(xVal, yVal, true);
       }
       
       if (packetBuffer[0] == 'x'){
         xVal = val / MAX_VAL;
-        update_servos(xVal, yVal);
+        update_servos(xVal, yVal, true);
       }
 
       if (packetBuffer[0] == 'g'){
@@ -255,7 +278,21 @@ void recieve_commands(){
       if (MoveTo != val){
         MoveTo = val;
         if (MoveTo){
-            update_servos(0,0);
+          update_servos(0,0);
+        } 
+      }
+    }
+
+    if (packetBuffer[0] == 't' && !WallFollow){
+      char *token;
+      int val = atoi(strtok(packetBuffer+2, "_"));
+      if (BeaconTrack != val){
+        BeaconTrack = val;
+        if (BeaconTrack){
+          update_servos(0,0);
+          attach_interrupts();
+        } else{
+          deattach_interrupts();
         } 
       }
     }
@@ -282,6 +319,7 @@ void recieve_commands(){
       MoveToPGain = atof(strtok(NULL, "_"));
       MoveToFinalDistance = atoi(strtok(NULL, "_"));
       MoveToForwardVelocity = atof(strtok(NULL, "_"));
+      BeaconGain = atof(strtok(NULL, "_"));
     }
   }
 }
@@ -388,15 +426,11 @@ void update_vive(){
   else 
      vive2.sync(15); // try to resync (nonblocking);
 
-  RobotX = (V1X+V2X)/2;
-  RobotY = (V1Y+V2Y)/2;
-  RobotAngle = atan2(V2Y - V1Y, V2X - V1X);
-  Serial.print("Robot X");
-  Serial.println(RobotX);
-  Serial.print("Robot Y");
-  Serial.println(RobotY);
-  Serial.print("Robot angle");
-  Serial.println(RobotAngle);
+  if (V1X !=0 && V2X !=0){
+    RobotX = (V1X+V2X)/2;
+    RobotY = (V1Y+V2Y)/2;
+    RobotAngle = atan2(V2Y - V1Y, V2X - V1X);
+  }
 }
 
 void move_to(){
@@ -416,13 +450,8 @@ void move_to(){
     } else{
       TargetAngle = -2 * PI + (TargetAngle + PI/2); 
     }
-    //TargetAngle = adjustAngle90(TargetAngle); 
+
     double AngleError = TargetAngle - RobotAngle;
-    /**
-    if (AngleError > PI) {
-      AngleError = 
-    }
-    **/
     if (AngleError < -PI) {
       AngleError += 2*PI;
     } else if (AngleError > PI){
@@ -432,12 +461,6 @@ void move_to(){
 
     double UpdateAngle = AngleError * MoveToPGain;
     update_servos(UpdateAngle, .5);
-    Serial.print("TargetAngle");
-    Serial.println(TargetAngle);
-    Serial.print("Angle Error");
-    Serial.println(AngleError);
-    Serial.print("update angle control");
-    Serial.println(UpdateAngle);  
 
   }
 
@@ -445,19 +468,97 @@ void move_to(){
   }
 }
 
-#define len 13
+volatile long LastIR1 = 0;
+volatile long NewestIR1 = 0;
+volatile long LastIR2 = 0;
+volatile long NewestIR2 = 0;
+volatile float IRFreq1 = 0;
+volatile float IRFreq2 = 0;
+
+
+void IRAM_ATTR IR_ISR_1(){
+  LastIR1 = NewestIR1;
+  NewestIR1 = micros();
+}
+
+void IRAM_ATTR IR_ISR_2(){
+  LastIR2 = NewestIR2;
+  NewestIR2 = micros();
+
+}
+
+void attach_interrupts(){
+  attachInterrupt(digitalPinToInterrupt(IR_PIN_1), IR_ISR_1, RISING);
+  attachInterrupt(digitalPinToInterrupt(IR_PIN_2), IR_ISR_2, RISING);
+}
+
+void deattach_interrupts(){
+  detachInterrupt(digitalPinToInterrupt(IR_PIN_1));
+  detachInterrupt(digitalPinToInterrupt(IR_PIN_2));
+}
+
+void beacon_track(){
+
+  static long BeaconLastUpdate = 0;
+
+  if (millis()> BeaconLastUpdate + 1000/ BeaconTrackFreq){
+    long currtime = micros();
+    float freq_1 = 0;
+    float freq_2 = 0;
+
+    if (NewestIR1 && NewestIR2){
+        freq_1 = 1.0/((NewestIR1 - LastIR1)/1000000.0);
+        freq_2 = 1.0/((NewestIR2 - LastIR2)/1000000.0);
+    }
+
+    if (NewestIR1< micros() - 100000){
+      freq_1 = -1;
+    }
+    if (NewestIR2< micros() - 100000){
+      freq_2 = -1;
+    }
+    bool LeftDetected = false;
+    bool RightDetected = false;
+
+    if ((freq_1> 20 && freq_1 < 23) || (freq_1> 690 && freq_1 < 710)){
+      LeftDetected = true;
+    }
+
+    if ((freq_2 > 20 && freq_2 < 23) || (freq_2> 690 && freq_2 < 710)){
+      RightDetected = true;
+    }
+
+
+    if (LeftDetected && RightDetected){
+      update_servos(0, .5);
+
+    } else if (LeftDetected){
+      update_servos(BeaconGain, 0);
+
+    } else if (RightDetected){
+      update_servos(-BeaconGain, 0);
+
+    } else{
+      update_servos(.1, 0);
+    }
+    
+  }
+}
 
 void send_telemetry(){
-  char s[len];
+  char s[TELEM_BUF_LEN];
   // store into a string with format #:####,####, which is robotid, x, y
   sprintf(s,"%1d:%4d,%4d",RobotNum, RobotX, RobotY); 
   UdpRobots.beginPacket(ipTarget, UDPPortRobots);
-  UdpRobots.write((uint8_t *)s, len);
+  UdpRobots.write((uint8_t *)s, TELEM_BUF_LEN);
   UdpRobots.endPacket();
 }
 
 void loop(){
   recieve_commands();
+  float t =  millis() / 1000.0;
+  Serial.print("curr time");
+  Serial.println(t);
 
   if (WallFollow){
     wall_follow();
@@ -467,17 +568,23 @@ void loop(){
     move_to();
   }
 
-  if (!WallFollow){
-    if (millis()> LastVive+100){
-      update_vive();
-      LastVive = millis();
-    }
+  if (BeaconTrack){
+    beacon_track();
   }
+
+  if (millis()> LastVive + 100){
+    update_vive();
+    LastVive = millis();
+    t =  millis() / 1000.0;
+    Serial.print("post vive time");
+    Serial.println(t);
+  }
+  
+  
 
   long time = millis();
   if (time> LastLocationSend +1000){
     LastLocationSend = millis();
     send_telemetry();
   }
-
 }
