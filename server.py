@@ -65,9 +65,18 @@ TurnPGain = .5
 RotationDelay = 500
 MoveToPGain =.2
 MoveToForwardVelocity = .2
-
-start = int(round(time.time() *1000))
 BeaconGain = .5
+
+CANRADIUS = 2.6/2
+#vive coordinates corresponding to top left corner of board  bonus square
+X_MIN_SQUARE = 3220
+Y_MIN_SQUARE = 3455
+#vive coorindates corresponding to bottom right of board bonus square
+X_MAX_SQUARE = 5210
+Y_MAX_SQUARE = 5223
+
+cans = []
+robots = []
 
 def joystick():
     BTN_TR_state = False
@@ -128,6 +137,7 @@ class Window(QMainWindow):
         f_width = .94*w
         f_height = f_width*(60/144)
         foot = f_width /12
+        inch = foot/12
 
         # draw field
         painter.setPen(QPen(Qt.black,  3, Qt.SolidLine))
@@ -140,6 +150,26 @@ class Window(QMainWindow):
         painter.drawRect(round(offset), round(offset), round(f_width), round(f_height))
         painter.drawRect(round(4.5 * foot + offset),  round(offset + foot), round(3*foot), round(3*foot))
         painter.drawLine(round(offset+6*foot), round(offset), round(offset+6*foot), round(offset+5*foot))
+
+        black =QColor()
+        black.setHsv(255, 255, 255)
+
+        #draw cans
+        for can in cans:
+            number = cans[can][0]
+            #fix coorindate offset and scale (might need to switch height and width depending on whatx and y corresond to)
+            x_coord = (cans[can][1] - X_MIN_VIVE)/(X_MAX_VIVE - X_MIN_VIVE)*f_width
+            y_coord = (cans[can][2] - Y_MIN_VIVE)/(Y_MAX_VIVE - Y_MIN_VIVE)*f_height
+            painter.drawEllipse(x_coord, y_coord, round(CANRADIUS*inch), round(CANRADIUS*inch), black)
+            # painter.drawText(x_coord, y_coord,  round(inch), round(inch))
+
+        #draw robots
+        for bot in robots:
+            number =  robots[bot][0]
+            x_coord = robots[bot][0]
+            y_coord = robots[bot][0]
+            painter.drawRect(x_coord, y_coord, round(foot), round(foot), black)
+
 
 
 def server():
