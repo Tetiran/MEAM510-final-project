@@ -56,7 +56,7 @@ Grip1Closed = -40
 Gip1Open = 40
 Grip2Closed = 180
 Grip2Open = 45
-TeamNumber = 7
+TeamNumber = 2
 
 FollowDistance = 25
 FollowPGain = .005
@@ -79,15 +79,26 @@ X_MAX_SQUARE = 5210
 Y_MAX_SQUARE = 5223
 
 #vive coordinates corresponding to top left corner of board  bonus square
-X_MIN_SQUARE_CANS = 4979
-Y_MIN_SQUARE_CANS = 4735
+X_MIN_SQUARE_CANS = 5035
+Y_MIN_SQUARE_CANS = 4696
 #vive coorindates corresponding to bottom right of board bonus square
-X_MAX_SQUARE_CANS = 2946
-Y_MAX_SQUARE_CANS = 2928
+X_MAX_SQUARE_CANS = 3136
+Y_MAX_SQUARE_CANS = 2658
 
-
+""" test locations
+cans = {'1': (5035, 6696),
+        '2': (4335, 6396),
+        '3': (3635, 6676),
+        '4': (3135, 6256),
+        '5': (5155, 1856),
+        '6': (4335, 1726),
+        '7': (3655, 1796),
+        '8': (3035, 1836)}
+robots = {'2': (4500, 3700)}
+"""
 cans = {}
 robots = {}
+
 
 window = 0
 
@@ -127,6 +138,7 @@ def joystick():
                     if BTN_WEST_EAST:
                         BeaconTrack = not BeaconTrack
 
+                # circularize controller
                 r = math.sqrt(x**2 + y**2)
                 
                 if (r> radius):
@@ -178,13 +190,13 @@ class Window(QMainWindow):
             x_coord = cans[can][0]
             y_coord = cans[can][1]
 
-            ONE_FOOT_VIVE_X = abs((X_MAX_SQUARE_CANS-X_MIN_SQUARE_CANS)/3)
-            ONE_FOOT_VIVE_Y = abs((Y_MAX_SQUARE_CANS-Y_MIN_SQUARE_CANS)/3)
+            ONE_FOOT_VIVE_X = abs((Y_MAX_SQUARE_CANS-Y_MIN_SQUARE_CANS)/3)
+            ONE_FOOT_VIVE_Y = abs((X_MAX_SQUARE_CANS-X_MIN_SQUARE_CANS)/3)
             VIVE_TOP_LEFT_X = X_MIN_SQUARE_CANS + 4.5*  ONE_FOOT_VIVE_X
             VIVE_TOP_LEFT_Y = Y_MIN_SQUARE_CANS + 1.0 * ONE_FOOT_VIVE_Y
 
-            CanXFootOffset = -(x_coord-VIVE_TOP_LEFT_X)/ONE_FOOT_VIVE_X
-            CAnYFootOffset = -(y_coord-VIVE_TOP_LEFT_Y)/ONE_FOOT_VIVE_Y
+            CanXFootOffset = -(y_coord-VIVE_TOP_LEFT_X)/ONE_FOOT_VIVE_X
+            CAnYFootOffset = -(x_coord-VIVE_TOP_LEFT_Y)/ONE_FOOT_VIVE_Y
             green =QColor()
             green.setHsv(170, 98, 78)
             painter.setPen(green)
@@ -249,11 +261,17 @@ def server(window):
 
         try:
             data, addr = RobotSocket.recvfrom(1024) # buffer size is 1024 bytes
-            if (len(data) >= 12):
-                data= data.decode('utf-8')
+            data= data.decode('utf-8')
+            if (len(data) == 13):
+                
                 num = int(data[0])
                 posx = int(data[2:6])
-                posy = int(data[7:11])
+                posy = 0
+                if (posx< 0):
+                    posx = int(data[2:7])
+                    posy = int(data[8:12])
+                else:
+                    posy = int(data[7:11])
                 print("robot message: {}".format(data))
                 robots[str(num)] = (posx, posy)
                 window.update()
@@ -261,7 +279,7 @@ def server(window):
             pass        
         try:
             data, addr = CanSocket.recvfrom(1024) # buffer size is 1024 bytes
-            if (len(data) >= 12):
+            if (len(data) == 13):
                 data= data.decode('utf-8')
                 num = int(data[0])
                 posx = int(data[2:6])
@@ -294,7 +312,6 @@ def main():
     t1.start()
     t2.start()
     sys.exit(app.exec_())
-    print('yes')
   
 if __name__=="__main__":
     main()
